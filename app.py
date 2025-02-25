@@ -1,5 +1,16 @@
-import streamlit as st
 import os
+import subprocess
+
+# Define the expected path of the browser executable.
+# (You might need to adjust this path if it differs in your environment)
+browser_path = "/home/appuser/.cache/ms-playwright/chromium-1155/chrome-linux/chrome"
+
+# Check if the executable exists; if not, install browsers.
+if not os.path.exists(browser_path):
+    st.write("Installing Playwright browsers...")
+    subprocess.run(["playwright", "install"], check=True)
+
+import streamlit as st
 import asyncio
 import nest_asyncio
 import sys
