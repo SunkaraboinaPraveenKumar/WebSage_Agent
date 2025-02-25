@@ -1,36 +1,35 @@
 FROM python:3.12-slim
 
-# Install system dependencies needed for playwright and other libraries.
+# Install the required system dependencies for Playwright
 RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    gnupg \
     libnss3 \
-    libx11-6 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
     libxcomposite1 \
-    libxcursor1 \
     libxdamage1 \
+    libxfixes3 \
     libxrandr2 \
     libgbm1 \
+    libxkbcommon0 \
+    libpango-1.0-0 \
+    libcairo2 \
     libasound2 \
-    libpangocairo-1.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+    libatspi2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory.
-WORKDIR /app
-
-# Copy the requirements file and install Python dependencies.
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code.
-COPY . .
+# Install Playwright browsers and their dependencies
+RUN playwright install-deps && playwright install
 
-# Install Playwright browsers (required by crawl4ai).
-RUN playwright install
+# Copy your app code
+COPY . /app
+WORKDIR /app
 
-# Expose Streamlit's default port.
+# Expose the Streamlit port and run the app
 EXPOSE 8501
-
-# Start the Streamlit app.
-CMD ["streamlit", "run", "app.py", "--server.enableCORS", "false"]
+CMD ["streamlit", "run", "app.py"]
