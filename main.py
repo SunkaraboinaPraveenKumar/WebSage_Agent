@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 import asyncio
 import nest_asyncio
 import sys
@@ -97,8 +96,9 @@ elif page == "AI Engine":
                         async with AsyncWebCrawler() as crawler:
                             result=await crawler.arun(url=url, config=crawler_run_config)
                             return result.markdown
-                    nest_asyncio.apply()
-                    extracted =  simple_crawl(url_input)
+                    
+                
+                    extracted=asyncio.run(simple_crawl(url_input))
                     st.session_state.extracted_text=extracted
                     st.session_state.extraction_done = True
             

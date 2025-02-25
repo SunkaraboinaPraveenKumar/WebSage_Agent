@@ -23,15 +23,6 @@ if sys.platform == "win32":
 load_dotenv()
 nest_asyncio.apply()
 
-# Define the expected path of the browser executable.
-# (You might need to adjust this path if it differs in your environment)
-browser_path = "/home/appuser/.cache/ms-playwright/chromium-1155/chrome-linux/chrome"
-
-# Check if the executable exists; if not, install browsers.
-if not os.path.exists(browser_path):
-    st.write("Installing Playwright browsers...")
-    subprocess.run(["playwright", "install"], check=True)
-
 
 # ---------------------------
 # Initialize Session State Variables
@@ -58,6 +49,19 @@ if "summary" not in st.session_state:
 # ---------------------------
 st.set_page_config(layout="wide", page_title="WebSage")
 st.title("Project WebSage")
+
+# Check if dependencies are installed (this is a naive check—adjust as needed)
+def install_playwright_deps():
+    try:
+        # This will try to run a command that should succeed if dependencies are met.
+        subprocess.run(["ldd", "/home/appuser/.cache/ms-playwright/chromium-1155/chrome-linux/chrome"],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError:
+        # If the check fails, run the install-deps command
+        subprocess.run(["playwright", "install-deps"], check=True)
+
+install_playwright_deps()
+
 
 page = st.sidebar.selectbox("Navigation",["Home","AI Engine","Contact"])
 
