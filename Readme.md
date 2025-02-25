@@ -1,0 +1,2 @@
+# Project-WebSage
+WebSage is a RAG chatbot that extracts content from any URL, generates summaries, and enables interaction using AI models. Choose between OpenSource API (GROQ) or Open Source Local(Ollama) for flexible summarization and conversation.
