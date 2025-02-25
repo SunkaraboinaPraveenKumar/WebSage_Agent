@@ -1,10 +1,12 @@
 import os
 import subprocess
+import sys
 import asyncio
 import nest_asyncio
-import sys
 import streamlit as st
 from dotenv import load_dotenv
+
+# Import your other modules (adjust these imports as needed)
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
@@ -16,20 +18,48 @@ from langchain.chains import RetrievalQA
 from streamlit_chat import message as st_message
 from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 
-# -------------------------------------------------------------------
+# ---------------
 # IMPORTANT: Set page config as the very first Streamlit command!
-# -------------------------------------------------------------------
+# ---------------
 st.set_page_config(layout="wide", page_title="WebSage")
 
-# Apply nest_asyncio to allow nested event loops (needed for async functions)
+# Allow nested asyncio loops (needed for async code inside Streamlit)
 nest_asyncio.apply()
 
-# For Windows compatibility if needed
+# For Windows (if needed)
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Load environment variables
 load_dotenv()
+
+# ---------------------------
+# Check & Install Playwright Dependencies
+# ---------------------------
+def install_playwright_deps():
+    # Note: The expected browser executable path may vary.
+    # On Linux (and many deployments) it is usually under ~/.cache/ms-playwright.
+    # Adjust this path if needed.
+    browser_path = os.path.expanduser("~/.cache/ms-playwright/chromium-1155/chrome-linux/chrome")
+    
+    if not os.path.exists(browser_path):
+        st.info("Installing Playwright dependencies and browsers...")
+        try:
+            # Install OS-level dependencies (this requires proper permissions)
+            subprocess.run(["playwright", "install-deps"], check=True)
+            # Install/download the Playwright browsers
+            subprocess.run(["playwright", "install"], check=True)
+        except subprocess.CalledProcessError as e:
+            st.error(
+                "Failed to install Playwright dependencies. "
+                "This usually means the host system is missing required OS-level libraries. \n\n"
+                "If you are on a managed platform, consider deploying via Docker so that you can install "
+                "the necessary libraries. \n\n"
+                f"Error details: {e}"
+            )
+            st.stop()
+
+install_playwright_deps()
 
 # ---------------------------
 # Initialize Session State Variables
@@ -50,28 +80,7 @@ if "summary" not in st.session_state:
     st.session_state.summary = ""
 
 # ---------------------------
-# Dependency Check for Playwright
-# ---------------------------
-def install_playwright_deps():
-    # This check is Linux-specific; adjust the browser_path if needed.
-    browser_path = "/home/appuser/.cache/ms-playwright/chromium-1155/chrome-linux/chrome"
-    # If the browser executable is missing, try installing dependencies.
-    if os.name == 'posix' and not os.path.exists(browser_path):
-        st.info("Installing Playwright dependencies...")
-        try:
-            subprocess.run(["playwright", "install-deps"], check=True)
-            subprocess.run(["playwright", "install"], check=True)
-        except subprocess.CalledProcessError:
-            st.error(
-                "Error installing Playwright dependencies. "
-                "Please ensure the host system has the required libraries installed."
-            )
-            st.stop()
-
-install_playwright_deps()
-
-# ---------------------------
-# Page Content
+# App Navigation & Content
 # ---------------------------
 st.title("Project WebSage")
 page = st.sidebar.selectbox("Navigation", ["Home", "AI Engine", "Contact"])
@@ -105,9 +114,6 @@ elif page == "AI Engine":
             st.session_state.chat_history = []
             st.session_state.summary = ""
 
-    # ---------------------------
-    # If URL has been submitted, divide layout into three columns
-    # ---------------------------
     if st.session_state.url_submitted:
         col1, col2, col3 = st.columns(3)
 
@@ -117,9 +123,9 @@ elif page == "AI Engine":
             if not st.session_state.extraction_done:
                 with st.spinner("Extracting Website..."):
                     async def simple_crawl(url):
-                        crawler_run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
+                        config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
                         async with AsyncWebCrawler() as crawler:
-                            result = await crawler.arun(url=url, config=crawler_run_config)
+                            result = await crawler.arun(url=url, config=config)
                             return result.markdown
 
                     try:
@@ -173,8 +179,8 @@ elif page == "AI Engine":
                             f.write(st.session_state.extracted_text)
                         loader = UnstructuredMarkdownLoader("output.md")
                         data = loader.load()
-                        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-                        texts = text_splitter.split_documents(data)
+                        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                        texts = splitter.split_documents(data)
                         embeddings = HuggingFaceEmbeddings()
                         vectorstore = FAISS.from_documents(texts, embeddings)
                         vectorstore.save_local("faiss_index")
@@ -189,8 +195,7 @@ elif page == "AI Engine":
             st.header("3. Chatbot Interface")
             if st.session_state.embedding_done:
                 llm_choice = st.radio("Select LLM Type", ("Groq API", "Local LLMs Ollama"), index=0, key="llm_choice")
-                vectorstore = st.session_state.vectorstore
-                retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+                retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 5})
                 prompt_template = """
                     You are an AI assistant tasked with answering questions based solely
                     on the provided context. Your goal is to generate a comprehensive answer
@@ -203,7 +208,7 @@ elif page == "AI Engine":
                     <response> Your answer in Markdown format. </response>
                     """
                 prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-                chain_type_kwargs = {"prompt": prompt}
+                chain_kwargs = {"prompt": prompt}
                 if llm_choice == "Groq API":
                     llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3, max_tokens=1500)
                 else:
@@ -212,27 +217,28 @@ elif page == "AI Engine":
                     llm=llm,
                     chain_type="stuff",
                     retriever=retriever,
-                    chain_type_kwargs=chain_type_kwargs,
+                    chain_type_kwargs=chain_kwargs,
                     return_source_documents=True,
                     verbose=True
                 )
-                user_input = st.text_input("Your Message:", key='chat_input')
+                user_input = st.text_input("Your Message:", key="chat_input")
                 if st.button("Send", key="send_button") and user_input:
                     response = qa(user_input)
                     bot_answer = response["result"]
                     st.session_state.chat_history.append({"user": user_input, "bot": bot_answer})
-                    chat_file_content = "\n\n".join(
+                    # Optionally save chat history to a file
+                    chat_content = "\n\n".join(
                         [f"User: {chat['user']}\nBot: {chat['bot']}" for chat in st.session_state.chat_history]
                     )
                     with open("chat_history.md", "w", encoding="utf-8") as f:
-                        f.write(chat_file_content)
+                        f.write(chat_content)
                 if st.session_state.chat_history:
                     for chat in st.session_state.chat_history:
                         st_message(chat["user"], is_user=True)
                         st_message(chat["bot"], is_user=False)
             else:
                 st.info("Please create embeddings to activate the chat.")
-                
+
 elif page == "Contact":
     st.markdown("""
     ## Contact
